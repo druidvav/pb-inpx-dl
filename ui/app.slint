@@ -1,0 +1,1120 @@
+export struct Row {
+    title: string,
+    subtitle: string,
+    language: string,
+    series: string,
+    cover: image,
+    has-cover: bool,
+    cover-state: int,
+    is-book: bool,
+}
+
+export struct LanguageOption {
+    label: string,
+    selected: bool,
+}
+
+enum ChevronDirection { none, left, right }
+
+component CatalogButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> selected;
+    in property <length> unit;
+    in property <length> label-size: 32 * root.unit;
+    in property <ChevronDirection> chevron;
+    private property <color> ink: root.selected ? #ffffff : (root.enabled ? #171717 : #626262);
+    private property <length> icon-size: 18 * root.unit;
+    private property <length> icon-space: root.chevron == ChevronDirection.none
+        ? 0px : root.icon-size + 10 * root.unit;
+    callback activated();
+
+    background: root.selected ? #171717 : #ffffff;
+    border-color: root.enabled ? #252525 : #9e9e9e;
+    border-width: max(1px, 2 * root.unit);
+    border-radius: 5 * root.unit;
+
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.activated(); } }
+
+    label-text := Text {
+        x: (parent.width - self.width - root.icon-space) / 2
+            + (root.chevron == ChevronDirection.left ? root.icon-space : 0px);
+        width: root.chevron == ChevronDirection.none ? parent.width - 28 * root.unit
+            : min(self.preferred-width, max(0px, parent.width - 28 * root.unit - root.icon-space));
+        height: parent.height;
+        text: root.label;
+        font-size: root.label-size;
+        color: root.ink;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        accessible-role: none;
+    }
+
+    if root.chevron != ChevronDirection.none : Image {
+        x: root.chevron == ChevronDirection.left ? label-text.x - root.icon-space
+            : label-text.x + label-text.width + 10 * root.unit;
+        y: (parent.height - self.height) / 2;
+        width: root.icon-size;
+        height: root.icon-size;
+        source: root.chevron == ChevronDirection.left ? @image-url("icons/chevron-left.svg")
+            : @image-url("icons/chevron-right.svg");
+        image-fit: contain;
+        colorize: root.ink;
+        accessible-role: none;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        clicked => { root.activated(); }
+    }
+}
+
+component SettingsButton inherits Rectangle {
+    in property <bool> enabled: true;
+    in property <length> unit;
+    private property <color> ink: root.enabled ? #171717 : #9e9e9e;
+    callback activated();
+
+    background: #ffffff;
+    border-color: root.enabled ? #252525 : #9e9e9e;
+    border-width: max(1px, 2 * root.unit);
+    border-radius: 5 * root.unit;
+
+    accessible-role: button;
+    accessible-label: "Настройки";
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if root.enabled { root.activated(); } }
+
+    Image {
+        width: 48 * root.unit;
+        height: self.width;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        source: @image-url("icons/gear.svg");
+        image-fit: contain;
+        colorize: root.ink;
+        accessible-role: none;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        clicked => { root.activated(); }
+    }
+}
+
+component BookCover inherits Rectangle {
+    in property <image> cover;
+    in property <bool> has-cover;
+    in property <int> cover-state;
+    in property <bool> show-status-icon;
+    in property <length> unit;
+
+    background: #eeeeee;
+    border-color: #b5b5b5;
+    border-width: max(1px, root.unit);
+
+    if root.has-cover : Image {
+        source: root.cover;
+        image-fit: contain;
+        width: 100%;
+        height: 100%;
+    }
+
+    if !root.has-cover && root.show-status-icon : Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(parent.width * 0.6, parent.height * 0.6);
+        height: self.width;
+        source: root.cover-state == 1 ? @image-url("icons/download.svg")
+            : root.cover-state == 3 ? @image-url("icons/triangle-exclamation.svg")
+            : @image-url("icons/xmark.svg");
+        image-fit: contain;
+        colorize: #171717;
+        accessible-role: none;
+    }
+
+    if !root.has-cover && !root.show-status-icon : Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: parent.width * 0.42;
+        height: self.width * 1.25;
+        source: @image-url("icons/book.svg");
+        image-fit: contain;
+        colorize: #626262;
+        accessible-role: none;
+    }
+}
+
+component ResultRow inherits Rectangle {
+    in property <Row> entry;
+    in property <length> unit;
+    in property <bool> enabled;
+    callback activated();
+
+    private property <length> cover-width: cover-art.height * 0.69;
+    private property <length> text-left: root.entry.is-book ? root.cover-width + 30 * root.unit : 0px;
+    private property <string> book-metadata: !root.entry.is-book ? ""
+        : root.entry.language == "" ? root.entry.series
+        : root.entry.series == "" ? root.entry.language
+        : root.entry.language + " · " + root.entry.series;
+    private property <bool> has-subtitle: root.entry.subtitle != "";
+    private property <bool> has-metadata: root.has-subtitle || root.book-metadata != "";
+
+    cover-art := BookCover {
+        x: 0px;
+        y: (parent.height - self.height) / 2;
+        width: root.cover-width;
+        height: min(parent.height - 24 * root.unit, 174 * root.unit);
+        visible: root.entry.is-book;
+        unit: root.unit;
+        cover: root.entry.cover;
+        has-cover: root.entry.has-cover;
+        cover-state: root.entry.cover-state;
+        show-status-icon: true;
+    }
+
+    title := Text {
+        x: root.text-left;
+        y: root.has-metadata ? parent.height / 2 - self.height + 18 * root.unit
+            - (root.has-subtitle ? metadata.height / 2 : 0px)
+            : (parent.height - self.height) / 2;
+        width: parent.width - self.x - 56 * root.unit;
+        height: 99 * root.unit;
+        text: root.entry.title;
+        font-size: 40 * root.unit;
+        font-weight: 700;
+        color: #171717;
+        wrap: word-wrap;
+        overflow: elide;
+        vertical-alignment: root.has-metadata ? bottom : center;
+    }
+
+    subtitle := Text {
+        x: title.x;
+        y: title.y + title.height + 6 * root.unit;
+        width: title.width;
+        height: root.has-subtitle ? 43 * root.unit : 0px;
+        text: root.entry.subtitle;
+        font-size: 31 * root.unit;
+        color: #383838;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    metadata := Text {
+        x: title.x;
+        y: subtitle.y + subtitle.height;
+        width: title.width;
+        height: root.book-metadata != "" ? 43 * root.unit : 0px;
+        visible: root.book-metadata != "";
+        text: root.book-metadata;
+        font-size: 31 * root.unit;
+        color: #383838;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    Image {
+        x: parent.width - (42 * root.unit + self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 26 * root.unit;
+        height: self.width;
+        source: @image-url("icons/chevron-right.svg");
+        image-fit: contain;
+        colorize: #171717;
+        accessible-role: none;
+    }
+
+    Rectangle {
+        x: 0px;
+        y: parent.height - self.height;
+        width: 100%;
+        height: max(1px, root.unit);
+        background: #969696;
+    }
+
+    TouchArea {
+        enabled: root.enabled;
+        clicked => { root.activated(); }
+    }
+}
+
+export component CatalogWindow inherits Window {
+    in-out property <string> query;
+    in-out property <int> mode;
+    in-out property <int> source;
+    in property <bool> inpx-enabled;
+    in-out property <string> page-label;
+    in-out property <bool> can-prev;
+    in-out property <bool> can-next;
+    in-out property <bool> can-back;
+    in-out property <[Row]> rows;
+    in-out property <[LanguageOption]> language-options;
+    in-out property <bool> all-languages;
+    in-out property <string> language-status;
+    in-out property <string> flibusta-username;
+    in-out property <bool> flibusta-has-password;
+    in-out property <bool> flibusta-can-logout;
+    in-out property <string> flibusta-account-status;
+    in-out property <int> screen;
+    in-out property <bool> busy;
+    in-out property <string> catalog-message;
+    in-out property <bool> catalog-can-retry;
+    in-out property <string> status;
+    in-out property <string> detail-title;
+    in-out property <string> detail-author;
+    in-out property <[string]> author-choices;
+    in-out property <string> detail-description;
+    in-out property <bool> detail-loading;
+    in-out property <string> detail-error;
+    in-out property <string> detail-meta;
+    in-out property <string> detail-extra-metadata;
+    in-out property <string> detail-statistics;
+    in-out property <image> detail-cover;
+    in-out property <bool> detail-has-cover;
+    in-out property <[string]> formats;
+    in-out property <bool> downloading;
+    in-out property <bool> downloaded;
+    in-out property <string> progress;
+
+    callback open-search();
+    callback dismiss-catalog-message();
+    callback retry-catalog-request();
+    callback change-mode(int);
+    callback select-source(int);
+    callback go-back();
+    callback open-settings();
+    callback open-language-settings();
+    callback open-flibusta-account();
+    callback edit-flibusta-account(bool);
+    callback apply-flibusta-account(bool);
+    callback toggle-language(int);
+    callback add-language();
+    callback apply-languages();
+    callback previous-page();
+    callback next-page();
+    callback open-row(int);
+    callback open-author-books();
+    callback select-author(int);
+    callback download-format(int);
+
+    title: "Каталог книг";
+    preferred-width: 536px;
+    preferred-height: 724px;
+    background: #ffffff;
+    forward-focus: catalog-keys;
+    init => { catalog-keys.focus(); }
+
+    private property <length> unit: min(self.width / 1072, self.height / 1448);
+    private property <length> margin: 38 * root.unit;
+    private property <length> gap: 16 * root.unit;
+    private property <length> button-height: 86 * root.unit;
+    private property <length> divider: max(1px, root.unit);
+    private property <bool> show-annotation: root.detail-loading
+        || root.detail-error != "" || root.detail-description != "";
+
+    catalog-keys := FocusScope {
+        key-pressed(event) => {
+            if (root.catalog-message != "") {
+                return accept;
+            }
+
+            if (event.text == Key.Backspace && !root.downloading) {
+                if (!event.repeat) {
+                    root.go-back();
+                }
+                return accept;
+            }
+
+            if (root.screen == 0 && !root.busy) {
+                if (event.text == Key.LeftArrow && root.can-prev) {
+                    if (!event.repeat) {
+                        root.previous-page();
+                    }
+                    return accept;
+                }
+                if (event.text == Key.RightArrow && root.can-next) {
+                    if (!event.repeat) {
+                        root.next-page();
+                    }
+                    return accept;
+                }
+            }
+
+            reject
+        }
+    }
+
+    if root.screen == 0 : Rectangle {
+        x: root.margin;
+        y: root.margin;
+        width: parent.width - 2 * root.margin;
+        height: parent.height - 2 * root.margin;
+
+        HorizontalLayout {
+            x: 224 * root.unit;
+            y: 0px;
+            width: parent.width - 2 * self.x;
+            height: root.button-height;
+            spacing: root.gap;
+
+            for source-label[index] in ["INPX", "Флибуста"] : CatalogButton {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                label: source-label;
+                selected: root.source == index;
+                enabled: !root.busy && !root.downloading && (index != 0 || root.inpx-enabled);
+                activated => { root.select-source(index); }
+            }
+        }
+
+        if root.can-back : CatalogButton {
+            x: 0px;
+            y: 0px;
+            width: 208 * root.unit;
+            height: root.button-height;
+            unit: root.unit;
+            label: "Назад";
+            chevron: ChevronDirection.left;
+            enabled: !root.busy && !root.downloading;
+            activated => { root.go-back(); }
+        }
+
+        SettingsButton {
+            x: parent.width - self.width;
+            y: 0px;
+            width: root.button-height;
+            height: root.button-height;
+            unit: root.unit;
+            enabled: !root.busy && !root.downloading;
+            activated => { root.open-settings(); }
+        }
+
+        search := Rectangle {
+            x: 0px;
+            y: 116 * root.unit;
+            width: 100%;
+            height: root.button-height;
+            background: #f1f1f1;
+            border-color: #252525;
+            border-width: max(1px, 2 * root.unit);
+            border-radius: 5 * root.unit;
+
+            Text {
+                x: 24 * root.unit;
+                width: parent.width - self.x - search-label.width - 20 * root.unit;
+                height: parent.height;
+                text: root.query == "" ? "Введите запрос" : root.query;
+                font-size: 35 * root.unit;
+                color: #252525;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            search-label := Text {
+                x: parent.width - self.width;
+                width: 176 * root.unit;
+                height: parent.height;
+                text: "Поиск";
+                font-size: 34 * root.unit;
+                color: #171717;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                x: search-label.x;
+                y: 14 * root.unit;
+                width: root.divider;
+                height: parent.height - 28 * root.unit;
+                background: #969696;
+            }
+
+            TouchArea {
+                clicked => { root.open-search(); }
+            }
+        }
+
+        tabs := HorizontalLayout {
+            x: 0px;
+            y: search.y + search.height + 24 * root.unit;
+            width: 100%;
+            height: root.button-height;
+            spacing: root.gap;
+
+            for tab-label[index] in ["Книги", "Авторы"] : CatalogButton {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                label: tab-label;
+                selected: root.mode == index;
+                activated => { root.change-mode(index); }
+            }
+        }
+
+        results := Rectangle {
+            x: 0px;
+            y: tabs.y + tabs.height + 12 * root.unit;
+            width: 100%;
+            height: pagination.y - self.y - 18 * root.unit;
+            clip: true;
+
+            Rectangle {
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: root.divider;
+                background: #252525;
+            }
+
+            for row[index] in root.rows : ResultRow {
+                x: 0px;
+                y: root.divider + index * self.height;
+                width: 100%;
+                height: (parent.height - root.divider) / 4;
+                unit: root.unit;
+                entry: row;
+                enabled: !root.busy;
+                activated => { root.open-row(index); }
+            }
+
+            if root.rows.length == 0 && !root.busy : Text {
+                x: 40 * root.unit;
+                y: 68 * root.unit;
+                width: parent.width - 80 * root.unit;
+                height: 180 * root.unit;
+                text: root.query == "" ? "Нажмите «Поиск», чтобы найти книги" : "Ничего не найдено";
+                font-size: 37 * root.unit;
+                color: #383838;
+                horizontal-alignment: center;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+        }
+
+        pagination := HorizontalLayout {
+            x: 0px;
+            y: parent.height - self.height;
+            width: 100%;
+            height: root.button-height;
+            spacing: root.gap;
+
+            CatalogButton {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                label: "Предыдущая";
+                chevron: ChevronDirection.left;
+                enabled: root.can-prev && !root.busy;
+                activated => { root.previous-page(); }
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                min-width: 0px;
+                text: root.page-label;
+                font-size: 32 * root.unit;
+                color: #252525;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            CatalogButton {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                label: "Следующая";
+                chevron: ChevronDirection.right;
+                enabled: root.can-next && !root.busy;
+                activated => { root.next-page(); }
+            }
+        }
+    }
+
+    if root.screen == 1 : Rectangle {
+        x: root.margin;
+        y: root.margin;
+        width: parent.width - 2 * root.margin;
+        height: parent.height - 2 * root.margin;
+
+        back := CatalogButton {
+            x: 0px;
+            y: 0px;
+            width: 208 * root.unit;
+            height: root.button-height;
+            unit: root.unit;
+            label: "Назад";
+            chevron: ChevronDirection.left;
+            activated => { root.go-back(); }
+        }
+
+        if root.author-choices.length > 0 : CatalogButton {
+            x: parent.width - self.width;
+            y: back.y;
+            width: 400 * root.unit;
+            height: root.button-height;
+            unit: root.unit;
+            label: "Другие книги автора";
+            enabled: !root.downloading;
+            activated => { root.open-author-books(); }
+        }
+
+        detail-content := Rectangle {
+            x: 0px;
+            y: back.y + back.height + 24 * root.unit;
+            width: 100%;
+            height: parent.height - self.y;
+            private property <length> statistics-space: root.detail-statistics == "" ? 0px
+                : statistics-label.height + statistics.height + 12 * root.unit;
+
+            detail-cover-art := BookCover {
+                x: 0px;
+                y: 0px;
+                width: 200 * root.unit;
+                height: 290 * root.unit;
+                unit: root.unit;
+                cover: root.detail-cover;
+                has-cover: root.detail-has-cover;
+            }
+
+            download-action := Rectangle {
+                x: detail-cover-art.x;
+                y: max(detail-cover-art.y + detail-cover-art.height,
+                    detail-meta-text.y + detail-meta-text.height) + 16 * root.unit;
+                width: 260 * root.unit;
+                height: root.button-height;
+
+                if root.formats.length > 0 : CatalogButton {
+                    width: 100%;
+                    height: 100%;
+                    unit: root.unit;
+                    label-size: 30 * root.unit;
+                    label: root.downloading ? ""
+                        : (root.downloaded ? "Скачан " : "Скачать ") + root.formats[0];
+                    selected: root.downloading;
+                    enabled: !root.downloading && !root.downloaded;
+                    activated => { root.download-format(0); }
+                }
+
+                if root.downloading : Rectangle {
+                    width: 28 * root.unit;
+                    height: self.width;
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    border-radius: self.width / 2;
+                    border-width: max(1px, 3 * root.unit);
+                    border-color: #ffffff;
+                }
+
+                if root.formats.length == 0 : Text {
+                    width: 100%;
+                    height: 100%;
+                    text: "Нет файла";
+                    font-size: 24 * root.unit;
+                    color: #383838;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            detail-title-text := Text {
+                x: 232 * root.unit;
+                y: 0px;
+                width: detail-content.width - self.x;
+                height: min(self.preferred-height, 132 * root.unit);
+                text: root.detail-title;
+                font-size: 51 * root.unit;
+                font-weight: 700;
+                color: #171717;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+
+            detail-author-text := Text {
+                x: detail-title-text.x;
+                y: detail-title-text.height + (root.detail-author == "" ? 0px : 12 * root.unit);
+                width: detail-title-text.width;
+                height: root.detail-author == "" ? 0px : min(self.preferred-height, 88 * root.unit);
+                text: root.detail-author;
+                font-size: 36 * root.unit;
+                color: #252525;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+
+            detail-meta-text := Text {
+                x: detail-title-text.x;
+                y: detail-author-text.y + detail-author-text.height + (root.detail-meta == "" ? 0px : 12 * root.unit);
+                width: detail-title-text.width;
+                height: root.detail-meta == "" ? 0px : min(self.preferred-height, 140 * root.unit);
+                text: root.detail-meta;
+                font-size: 30 * root.unit;
+                color: #383838;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+
+            Text {
+                x: download-action.x + download-action.width + 24 * root.unit;
+                y: download-action.y;
+                width: detail-content.width - self.x;
+                height: download-action.height;
+                text: root.downloading ? root.progress : root.status;
+                font-size: 30 * root.unit;
+                color: #252525;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+
+            edition-label := Text {
+                x: 0px;
+                y: download-action.y + download-action.height + 24 * root.unit;
+                width: detail-content.width;
+                height: root.detail-extra-metadata == "" ? 0px : 49 * root.unit;
+                visible: root.detail-extra-metadata != "";
+                text: "Об издании";
+                font-size: 34 * root.unit;
+                font-weight: 700;
+                color: #171717;
+                vertical-alignment: center;
+            }
+
+            extra-metadata := Text {
+                x: 0px;
+                y: edition-label.y + edition-label.height
+                    + (root.detail-extra-metadata == "" ? 0px : 12 * root.unit);
+                width: detail-content.width;
+                height: root.detail-extra-metadata == "" ? 0px : min(self.preferred-height, 180 * root.unit);
+                visible: root.detail-extra-metadata != "";
+                text: root.detail-extra-metadata;
+                font-size: 30 * root.unit;
+                color: #383838;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+
+            description-rule := Rectangle {
+                x: 0px;
+                y: extra-metadata.y + extra-metadata.height
+                    + (root.detail-extra-metadata == "" ? 0px : 24 * root.unit);
+                width: detail-content.width;
+                height: root.show-annotation ? root.divider : 0px;
+                visible: root.show-annotation;
+                background: #252525;
+            }
+
+            description-label := Text {
+                x: 0px;
+                y: description-rule.y + (root.show-annotation ? 17 * root.unit : 0px);
+                width: detail-content.width;
+                height: root.show-annotation ? 49 * root.unit : 0px;
+                text: "Аннотация";
+                visible: root.show-annotation;
+                font-size: 34 * root.unit;
+                font-weight: 700;
+                color: #171717;
+                vertical-alignment: center;
+            }
+
+            annotation-scroll := Flickable {
+                x: 0px;
+                y: description-label.y + description-label.height + (root.show-annotation ? 12 * root.unit : 0px);
+                width: detail-content.width;
+                height: root.show-annotation ? min(description.height, max(0px,
+                    detail-content.height - self.y - detail-content.statistics-space
+                    - (root.detail-statistics == "" ? 0px : 24 * root.unit))) : 0px;
+                visible: root.show-annotation;
+                viewport-width: self.width;
+                viewport-height: max(self.height, description.height);
+                interactive: self.viewport-height > self.height;
+
+                description := Text {
+                    x: 0px;
+                    y: 0px;
+                    width: annotation-scroll.width;
+                    height: self.preferred-height;
+                    text: root.detail-loading ? "Загрузка аннотации…"
+                        : (root.detail-error != "" ? root.detail-error : root.detail-description);
+                    font-size: 35 * root.unit;
+                    color: #171717;
+                    wrap: word-wrap;
+                }
+            }
+
+            statistics-label := Text {
+                x: 0px;
+                y: root.show-annotation ? annotation-scroll.y + annotation-scroll.height + 24 * root.unit
+                    : extra-metadata.y + extra-metadata.height + 24 * root.unit;
+                width: detail-content.width;
+                height: root.detail-statistics == "" ? 0px : 49 * root.unit;
+                visible: root.detail-statistics != "";
+                text: "Статистика текста";
+                font-size: 34 * root.unit;
+                font-weight: 700;
+                color: #171717;
+                vertical-alignment: center;
+            }
+
+            statistics := Text {
+                x: 0px;
+                y: statistics-label.y + statistics-label.height
+                    + (root.detail-statistics == "" ? 0px : 12 * root.unit);
+                width: detail-content.width;
+                height: root.detail-statistics == "" ? 0px : min(self.preferred-height, 180 * root.unit);
+                visible: root.detail-statistics != "";
+                text: root.detail-statistics;
+                font-size: 30 * root.unit;
+                color: #383838;
+                wrap: word-wrap;
+                overflow: elide;
+            }
+        }
+    }
+
+    if root.screen == 2 : Rectangle {
+        x: root.margin;
+        y: root.margin;
+        width: parent.width - 2 * root.margin;
+        height: parent.height - 2 * root.margin;
+
+        author-back := CatalogButton {
+            x: 0px;
+            y: 0px;
+            width: 208 * root.unit;
+            height: root.button-height;
+            unit: root.unit;
+            label: "Назад";
+            chevron: ChevronDirection.left;
+            activated => { root.go-back(); }
+        }
+
+        Text {
+            x: author-back.width + 24 * root.unit;
+            y: author-back.y;
+            width: parent.width - self.x;
+            height: author-back.height;
+            text: "Выберите автора";
+            font-size: 38 * root.unit;
+            font-weight: 700;
+            color: #171717;
+            vertical-alignment: center;
+        }
+
+        Flickable {
+            x: 0px;
+            y: author-back.y + author-back.height + 24 * root.unit;
+            width: 100%;
+            height: parent.height - self.y;
+            viewport-width: self.width;
+            viewport-height: max(self.height,
+                root.author-choices.length * (root.button-height + root.gap) - root.gap);
+
+            for author[index] in root.author-choices : CatalogButton {
+                x: 0px;
+                y: index * (root.button-height + root.gap);
+                width: 100%;
+                height: root.button-height;
+                unit: root.unit;
+                label: author;
+                activated => { root.select-author(index); }
+            }
+        }
+    }
+
+    if root.screen == 3 : Rectangle {
+        x: root.margin;
+        y: root.margin;
+        width: parent.width - 2 * root.margin;
+        height: parent.height - 2 * root.margin;
+
+        settings-back := CatalogButton {
+            x: 0px;
+            y: 0px;
+            width: 208 * root.unit;
+            height: root.button-height;
+            unit: root.unit;
+            label: "Назад";
+            chevron: ChevronDirection.left;
+            activated => { root.go-back(); }
+        }
+
+        Text {
+            x: settings-back.width + 24 * root.unit;
+            y: 0px;
+            width: parent.width - self.x;
+            height: root.button-height;
+            text: "Языки книг";
+            font-size: 38 * root.unit;
+            font-weight: 700;
+            color: #171717;
+            vertical-alignment: center;
+        }
+
+        all := CatalogButton {
+            x: 0px;
+            y: settings-back.height + 24 * root.unit;
+            width: 100%;
+            height: root.button-height;
+            unit: root.unit;
+            label: "Все языки";
+            selected: root.all-languages;
+            activated => { root.toggle-language(-1); }
+        }
+
+        Flickable {
+            x: 0px;
+            y: all.y + all.height + root.gap;
+            width: 100%;
+            height: footer.y - self.y - root.gap
+                - (root.language-status == "" ? 0px : 58 * root.unit);
+            viewport-width: self.width;
+            viewport-height: max(self.height,
+                root.language-options.length * (root.button-height + root.gap) - root.gap);
+
+            for option[index] in root.language-options : CatalogButton {
+                x: 0px;
+                y: index * (root.button-height + root.gap);
+                width: 100%;
+                height: root.button-height;
+                unit: root.unit;
+                label: option.label;
+                selected: option.selected;
+                activated => { root.toggle-language(index); }
+            }
+        }
+
+        if root.language-status != "" : Text {
+            x: 0px;
+            y: footer.y - 58 * root.unit;
+            width: 100%;
+            height: 48 * root.unit;
+            text: root.language-status;
+            font-size: 30 * root.unit;
+            color: #252525;
+            vertical-alignment: center;
+        }
+
+        footer := HorizontalLayout {
+            x: 0px;
+            y: parent.height - self.height;
+            width: 100%;
+            height: root.button-height;
+            spacing: root.gap;
+
+            CatalogButton {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                label: "Добавить код";
+                activated => { root.add-language(); }
+            }
+
+            CatalogButton {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                label: "Применить";
+                activated => { root.apply-languages(); }
+            }
+        }
+    }
+
+    if root.screen == 4 : Rectangle {
+        x: root.margin;
+        y: root.margin;
+        width: parent.width - 2 * root.margin;
+        height: parent.height - 2 * root.margin;
+
+        settings-menu-back := CatalogButton {
+            x: 0px;
+            y: 0px;
+            width: 208 * root.unit;
+            height: root.button-height;
+            unit: root.unit;
+            label: "Назад";
+            chevron: ChevronDirection.left;
+            activated => { root.go-back(); }
+        }
+
+        Text {
+            x: settings-menu-back.width + 24 * root.unit;
+            y: 0px;
+            width: parent.width - self.x;
+            height: root.button-height;
+            text: "Настройки";
+            font-size: 38 * root.unit;
+            font-weight: 700;
+            color: #171717;
+            vertical-alignment: center;
+        }
+
+        languages := CatalogButton {
+            x: 0px;
+            y: settings-menu-back.height + 24 * root.unit;
+            width: 100%;
+            height: root.button-height;
+            unit: root.unit;
+            label: "Языки книг";
+            activated => { root.open-language-settings(); }
+        }
+
+        CatalogButton {
+            x: 0px;
+            y: languages.y + languages.height + root.gap;
+            width: 100%;
+            height: root.button-height;
+            unit: root.unit;
+            label: "Аккаунт Флибусты";
+            activated => { root.open-flibusta-account(); }
+        }
+    }
+
+    if root.screen == 5 : Rectangle {
+        x: root.margin;
+        y: root.margin;
+        width: parent.width - 2 * root.margin;
+        height: parent.height - 2 * root.margin;
+
+        account-back := CatalogButton {
+            x: 0px;
+            y: 0px;
+            width: 208 * root.unit;
+            height: root.button-height;
+            unit: root.unit;
+            label: "Назад";
+            chevron: ChevronDirection.left;
+            activated => { root.go-back(); }
+        }
+
+        Text {
+            x: account-back.width + 24 * root.unit;
+            y: 0px;
+            width: parent.width - self.x;
+            height: root.button-height;
+            text: "Аккаунт Флибусты";
+            font-size: 38 * root.unit;
+            font-weight: 700;
+            color: #171717;
+            vertical-alignment: center;
+        }
+
+        login := CatalogButton {
+            x: 0px;
+            y: account-back.height + 24 * root.unit;
+            width: 100%;
+            height: root.button-height;
+            unit: root.unit;
+            label: root.flibusta-username == "" ? "Ввести логин" : "Логин  " + root.flibusta-username;
+            activated => { root.edit-flibusta-account(false); }
+        }
+
+        password := CatalogButton {
+            x: 0px;
+            y: login.y + login.height + root.gap;
+            width: 100%;
+            height: root.button-height;
+            unit: root.unit;
+            label: root.flibusta-has-password ? "Изменить пароль" : "Ввести пароль";
+            activated => { root.edit-flibusta-account(true); }
+        }
+
+        if root.flibusta-account-status != "" : Text {
+            x: 0px;
+            y: password.y + password.height + root.gap;
+            width: 100%;
+            height: 48 * root.unit;
+            text: root.flibusta-account-status;
+            font-size: 30 * root.unit;
+            color: #252525;
+            vertical-alignment: center;
+        }
+
+        HorizontalLayout {
+            x: 0px;
+            y: parent.height - self.height;
+            width: 100%;
+            height: root.button-height;
+            spacing: root.gap;
+
+            if root.flibusta-can-logout : CatalogButton {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                label: "Удалить данные входа";
+                activated => { root.apply-flibusta-account(true); }
+            }
+
+            CatalogButton {
+                horizontal-stretch: 1;
+                unit: root.unit;
+                label: "Применить";
+                activated => { root.apply-flibusta-account(false); }
+            }
+        }
+    }
+
+    if root.catalog-message != "" : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #ffffffcc;
+
+        TouchArea {
+            width: 100%;
+            height: 100%;
+            scroll-event(event) => { return accept; }
+        }
+
+        Rectangle {
+            width: parent.width - 2 * root.margin;
+            height: dialog-content.preferred-height + 56 * root.unit;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: #ffffff;
+            border-color: #252525;
+            border-width: max(1px, 2 * root.unit);
+            border-radius: 5 * root.unit;
+
+            dialog-content := VerticalLayout {
+                x: 28 * root.unit;
+                y: 28 * root.unit;
+                width: parent.width - 56 * root.unit;
+                height: parent.height - 56 * root.unit;
+                spacing: 24 * root.unit;
+
+                if !root.busy : Text {
+                    text: "Ошибка";
+                    font-size: 38 * root.unit;
+                    font-weight: 700;
+                    color: #171717;
+                    horizontal-alignment: center;
+                }
+
+                Text {
+                    text: root.catalog-message;
+                    font-size: 34 * root.unit;
+                    color: #252525;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                if !root.busy : HorizontalLayout {
+                    height: root.button-height;
+                    spacing: root.gap;
+
+                    CatalogButton {
+                        horizontal-stretch: 1;
+                        unit: root.unit;
+                        label: "OK";
+                        activated => { root.dismiss-catalog-message(); }
+                    }
+
+                    if root.catalog-can-retry : CatalogButton {
+                        horizontal-stretch: 1;
+                        unit: root.unit;
+                        label: "Повторить";
+                        activated => { root.retry-catalog-request(); }
+                    }
+                }
+            }
+        }
+    }
+}
